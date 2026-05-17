@@ -1,0 +1,21 @@
+{
+  "base_url": "http://127.0.0.1:8080",
+  "document_type_id": 2,
+  "document_type_label": "Legal Matter Document",
+  "metadata_type_ids": {
+    "client_id": 1,
+    "matter_id": 2,
+    "doc_type": 3
+  },
+  "index_template_id": 2,
+  "index_node_ids": [
+    5,
+    6,
+    7
+  ],
+  "uploaded_document_ids": [
+    1,
+    2,
+    3
+  ]
+}

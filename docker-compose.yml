@@ -1,0 +1,187 @@
+# Mayan EDMS POC — Day 1 (decision validation)
+#
+# Goal: stand up Mayan 4.11.3 with the minimum service set that lets us test
+# IndexTemplate.expression — the Phase 2 pass/fail criterion.
+#
+# Stack (versions pinned from Mayan's upstream docker-compose, see
+# /.sources/mayan-edms/docker/docker-compose.yml lines 127, 166, 215, 262):
+#   - mayanedms/mayanedms:s4.11   app (gunicorn + celery worker + beat)
+#   - postgres:15.17               primary DB
+#   - redis:7.4.8                  celery result + lock manager
+#   - rabbitmq:4.1.8-management    celery broker
+#
+# Search backend: Whoosh (in-process, no separate container). This is Mayan's
+# documented default — DEFAULT_SEARCH_BACKEND in
+# /.sources/mayan-edms/mayan/apps/dynamic_search/literals.py:7. Elasticsearch
+# is deliberately excluded to keep the memory floor honest for the Synology
+# sizing question.
+#
+# Bind: 127.0.0.1 only. No LAN exposure on the dev box.
+
+x-mayan-environment: &mayan-environment
+  MAYAN_CELERY_BROKER_URL: amqp://mayan:mayanrabbitpass@rabbitmq:5672/mayan
+  MAYAN_CELERY_RESULT_BACKEND: redis://:mayanredispassword@redis:6379/1
+  MAYAN_DATABASES: "{'default':{'ENGINE':'django.db.backends.postgresql','NAME':'mayan','PASSWORD':'mayandbpass','USER':'mayan','HOST':'postgresql','PORT':5432,'CONN_MAX_AGE':0}}"
+  MAYAN_LOCK_MANAGER_BACKEND: mayan.apps.lock_manager.backends.redis_lock.RedisLock
+  MAYAN_LOCK_MANAGER_BACKEND_ARGUMENTS: "{'redis_url':'redis://:mayanredispassword@redis:6379/2'}"
+  # Day 2: register the .msg driver extension and matter-centric template
+  # override via Mayan's documented COMMON_EXTRA_APPS hook (see
+  # /.sources/mayan-edms/mayan/apps/common/settings.py:36). The extensions
+  # live on the host under ./mayan_extensions and are mounted read-only
+  # into the app container; PYTHONPATH brings them onto the import path.
+  # YAML flow-sequence — Mayan's smart_settings deserializes env vars as
+  # YAML (see /.sources/mayan-edms/mayan/apps/smart_settings/setting_domains/environment_variables.py:18).
+  # Python-tuple syntax like ('a',) here would parse as a string and Django
+  # would iterate its characters looking for module names — "No module named '('".
+  MAYAN_COMMON_EXTRA_APPS: "['mayan_extensions.file_metadata_msg_extended']"
+  # The UI overlay must be PREPENDED so its templates/dashboards/dashboard.html
+  # wins Django's template loader race against mayan.apps.dashboards. Using
+  # COMMON_EXTRA_APPS would append (late-loaded) and the override wouldn't
+  # take effect. See /.sources/mayan-edms/mayan/settings/base.py:440-446.
+  MAYAN_COMMON_EXTRA_APPS_PRE: "['mayan_extensions.matter_ui_overlay']"
+  PYTHONPATH: "/opt/mayan-extensions"
+  # Day 3: Microsoft Graph / Azure AD OIDC stub via mozilla-django-oidc 5.0.2
+  # (already in the Mayan image — see Pipfile.lock and pip show output).
+  # Mayan's authentication app loads ONE backend at boot, selected by
+  # MAYAN_AUTHENTICATION_BACKEND, with kwargs from
+  # MAYAN_AUTHENTICATION_BACKEND_ARGUMENTS. The OIDC backend
+  # (.sources/mayan-edms/mayan/apps/authentication_oidc/authentication_backends.py:23)
+  # fetches the discovery URL AT INIT TIME and expects a real reachable URL.
+  # We point at Microsoft's `common` tenant discovery doc — a public, real,
+  # no-auth-required endpoint that resolves to Azure AD's actual authorize /
+  # token / jwks / userinfo URLs. Real client ID and secret stay placeholder;
+  # the architect would replace them with values from an Azure AD app
+  # registration. See README "OAuth setup walkthrough" for that flow.
+  # --- OIDC TOGGLE: uncomment the two MAYAN_AUTHENTICATION_BACKEND* keys
+  # below to activate Azure AD SSO. When commented (the default for this
+  # POC), Mayan uses the standard password backend — required by every
+  # API-based script in poc/src/ (setup_matter_tree.py, upload_test_docs.py,
+  # verify_tree.py, test_msg_driver.py, import_csv.py) because they
+  # authenticate via /api/v4/auth/token/obtain/ with username/password.
+  #
+  # Activating OIDC replaces AUTHENTICATION_BACKENDS with only
+  # DjangoAuthenticationBackendOIDC (.sources/mayan-edms/mayan/apps/authentication_oidc/authentication_backends.py:86),
+  # which breaks the token endpoint. Production deployments typically run
+  # a hybrid backend (OIDC for end users + password fallback for break-glass
+  # admin + API automation); that's out of scope for this stub but called
+  # out in the README's Limitations section.
+  #
+  # Kwarg keys MUST be lowercase — UpstreamSetting.do_kwargs_capture at
+  # .sources/mayan-edms/mayan/apps/common/classes.py:377 does
+  # `kwargs.pop(self.name.lower(), ...)`. Passing OIDC_RP_CLIENT_ID
+  # (uppercase) is silently ignored and Mayan falls back to default `None`,
+  # which propagates into the Azure AD authorize URL as `client_id=None`.
+  #MAYAN_AUTHENTICATION_BACKEND: mayan.apps.authentication_oidc.authentication_backends.AuthenticationBackendOIDC
+  #MAYAN_AUTHENTICATION_BACKEND_ARGUMENTS: >
+  #  {oidc_discovery_url: 'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
+  #   oidc_rp_client_id: 'AZURE_AD_APP_CLIENT_ID_PLACEHOLDER',
+  #   oidc_rp_client_secret: 'AZURE_AD_APP_CLIENT_SECRET_PLACEHOLDER',
+  #   oidc_rp_sign_algo: 'RS256'}
+
+services:
+  app:
+    image: mayanedms/mayanedms:s4.11
+    environment:
+      <<: *mayan-environment
+    volumes:
+      - mayan_app:/var/lib/mayan
+      - ./mayan_extensions:/opt/mayan-extensions/mayan_extensions:ro
+    ports:
+      - "127.0.0.1:8080:8000"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "/opt/mayan-edms/bin/python -c \"import sys,urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/', timeout=5); sys.exit(0 if r.status<400 else 1)\""
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
+    # Bumped from 1536m after Day 1: Celery workers were SIGKILL'd by the
+    # kernel OOM killer during indexing spikes (gunicorn + 4 celery worker
+    # classes + LibreOffice + ClamAV in the all-in-one image). 3072m
+    # eliminates OOM as a confounding variable for the POC. The Phase 1
+    # inferred ~2 GB floor was an underestimate; Day 1 measurements
+    # documented in /research/decision.md appendix.
+    mem_limit: 3072m
+
+  postgresql:
+    image: postgres:15.17
+    environment:
+      POSTGRES_DB: mayan
+      POSTGRES_USER: mayan
+      POSTGRES_PASSWORD: mayandbpass
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=100
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "mayan", "-U", "mayan"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - mayan_postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    mem_limit: 512m
+
+  redis:
+    image: redis:7.4.8
+    command:
+      - redis-server
+      - --appendonly
+      - "no"
+      - --databases
+      - "3"
+      - --maxmemory
+      - "100mb"
+      - --maxmemory-policy
+      - "allkeys-lru"
+      - --requirepass
+      - mayanredispassword
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "mayanredispassword", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - mayan_redis:/data
+    restart: unless-stopped
+    mem_limit: 128m
+
+  rabbitmq:
+    image: rabbitmq:4.1.8-management
+    environment:
+      RABBITMQ_DEFAULT_USER: mayan
+      RABBITMQ_DEFAULT_PASS: mayanrabbitpass
+      RABBITMQ_DEFAULT_VHOST: mayan
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - mayan_rabbitmq:/var/lib/rabbitmq
+    restart: unless-stopped
+    mem_limit: 384m
+
+volumes:
+  mayan_app:
+  mayan_postgres:
+  mayan_redis:
+  mayan_rabbitmq:

@@ -1,0 +1,9 @@
+nd_doc_id,client_id,matter_id,doc_type,author,created_date,modified_date,filename,mime_type
+ND-0000001,ACME-CORP,2025-001,correspondence,J. Daniels,2025-01-14T09:22:00Z,2025-01-14T11:05:00Z,acme-2025-001-correspondence.pdf,application/pdf
+ND-0000002,ACME-CORP,2025-001,pleadings,M. Soto,2025-01-28T15:41:00Z,2025-02-03T08:17:00Z,acme-2025-001-pleadings.pdf,application/pdf
+ND-0000003,ACME-CORP,2025-002,correspondence,J. Daniels,2025-02-11T10:08:00Z,2025-02-11T10:08:00Z,acme-2025-001-correspondence.pdf,application/pdf
+ND-0000004,WAYNE-ENT,2025-007,correspondence,M. Soto,2025-03-04T13:30:00Z,2025-03-04T13:30:00Z,wayne-2025-007-correspondence.pdf,application/pdf
+ND-0000005,WAYNE-ENT,2025-007,pleadings,J. Daniels,2025-03-19T09:00:00Z,2025-03-21T16:42:00Z,acme-2025-001-pleadings.pdf,application/pdf
+ND-0000006,WAYNE-ENT,2025-012,correspondence,A. Reyes,2025-04-02T11:55:00Z,2025-04-02T11:55:00Z,wayne-2025-007-correspondence.pdf,application/pdf
+ND-0000007,STARK-IND,2025-021,correspondence,A. Reyes,2025-04-15T08:20:00Z,2025-04-16T17:00:00Z,acme-2025-001-correspondence.pdf,application/pdf
+ND-0000008,STARK-IND,2025-021,invoice,A. Reyes,2025-04-22T14:00:00Z,2025-04-22T14:00:00Z,acme-2025-001-pleadings.pdf,application/pdf

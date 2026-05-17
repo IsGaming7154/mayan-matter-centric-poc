@@ -1,0 +1,85 @@
+{% comment %}
+Mayan dashboard override — surfaces the live matter index tree as the
+primary navigation surface, above the standard widget grid. This file
+replaces /.sources/mayan-edms/mayan/apps/dashboards/templates/dashboards/dashboard.html
+when matter_ui_overlay is loaded ahead of mayan.apps.dashboards in
+COMMON_EXTRA_APPS_PRE so Django's template loader hits this copy first.
+{% endcomment %}
+
+{% load i18n %}
+{% load matter_tree %}
+
+{% get_matter_tree as matter_tree %}
+
+<div class="row" style="margin-bottom: 24px;">
+  <div class="col-xs-12">
+    <div class="panel panel-primary" style="border: 2px solid #337ab7;">
+      <div class="panel-heading" style="font-size: 1.1em; font-weight: bold;">
+        <span class="fa fa-folder-open" style="margin-right: 8px;"></span>
+        {% trans 'Matter index — primary navigation (POC overlay)' %}
+      </div>
+      <div class="panel-body">
+        {% if matter_tree %}
+          <p style="margin-bottom: 12px; color: #555;">
+            {% trans 'Live tree from the IndexInstance configured on Day 1. Auto-populated by IndexTemplate.expression as documents are uploaded with metadata.' %}
+          </p>
+          <div style="font-family: monospace; line-height: 1.7; padding-left: 12px;">
+            {% for client in matter_tree %}
+              <div>
+                <strong style="color: #337ab7;">
+                  <span class="fa fa-briefcase"></span>
+                  {{ client.label }}
+                </strong>
+                <span style="color: #999; font-size: 0.9em;">
+                  ({{ client.document_count }} {% trans 'doc(s)' %})
+                </span>
+                {% for matter in client.children %}
+                  <div style="margin-left: 28px;">
+                    <span class="fa fa-folder" style="color: #f0ad4e;"></span>
+                    {{ matter.label }}
+                    <span style="color: #999; font-size: 0.9em;">
+                      ({{ matter.document_count }} {% trans 'doc(s)' %})
+                    </span>
+                  </div>
+                {% empty %}
+                  <div style="margin-left: 28px; color: #999;">
+                    <em>{% trans '(no matters under this client yet)' %}</em>
+                  </div>
+                {% endfor %}
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p style="color: #999;">
+            <em>
+              {% trans 'No matter tree to display yet. Upload a document with client_id / matter_id / doc_type metadata and the tree will populate via the IndexTemplate.expression primitive.' %}
+            </em>
+          </p>
+        {% endif %}
+      </div>
+      <div class="panel-footer" style="font-size: 0.85em; color: #777;">
+        {% trans 'Source: live Mayan IndexInstance "Matters". Overlay rendered by mayan_extensions.matter_ui_overlay.' %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% comment %}
+Render the standard dashboard widgets BELOW the matter tree. This is the
+original dashboard template body, kept intact so the rest of Mayan's UX
+is unchanged.
+{% endcomment %}
+{% if not dashboard_skip_label %}
+    <h4>
+        {{ dashboard.label }}
+    </h4>
+    <hr>
+{% endif %}
+
+<div class="well">
+    <div class="row">
+        {% for widget in widgets %}
+            {{ widget }}
+        {% endfor %}
+    </div>
+</div>

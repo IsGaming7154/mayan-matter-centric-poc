@@ -65,7 +65,7 @@ Run from `poc/` directory. Tested on Windows 11 + Docker Desktop; should
 also work on macOS / Linux Docker.
 
 ```powershell
-cd "c:\Claude Code\Oppurtunity\poc"
+cd "c:\poc"
 
 # 1. Pull images. ~1.2 GB total: mayanedms ~800 MB, postgres ~150 MB,
 #    redis ~30 MB, rabbitmq ~250 MB.
